@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'https://aicte-sih-fdr-2.onrender.com').replace(/\/+$/, '');
+const API_BASE = `${API_ORIGIN}/api`;
 
 export function getAuthToken() {
   return localStorage.getItem('aicte_access_token');

@@ -1,144 +1,312 @@
-# AICTE FDR Portal
+# AICTE Security Deposit / FDR Management Portal
 
-Frontend starter for an AICTE Fixed Deposit Receipt (FDR) and security-deposit portal. The application contains separate institution and officer UI previews, registration and sign-in screens, a protected portal shell, and layouts for deposit management, transaction verification, documents, assistant search, calculations, and audit views.
+An evidence-driven prototype and working FastAPI backend for managing AICTE
+security deposits, fixed-deposit receipts (FDRs), payment claims, bank
+statement reconciliation, document checks, release/refund requests, reports,
+notifications, and audit records.
 
-> **Important:** This repository is currently a frontend prototype. It is not an AICTE service, does not authenticate AICTE users, and is not connected to an official database, bank, notification service, or document-verification system. Do not enter real credentials, personal information, institutional records, or financial data.
+This repository is also prepared for a project presentation. The
+[presentation fact sheet](docs/SLIDE_FACTS.md) is the source of truth for
+slide claims, implementation status, technical details, and a six-slide
+presentation outline.
+
+> **Important:** This is a prototype/demo and is not an official AICTE
+> service. Do not enter real credentials, personal information, institutional
+> records, or financial data. The local demo is not approved for production
+> financial, identity, or document processing.
+
+## Contents
+
+- [What the project does](#what-the-project-does)
+- [Technology stack](#technology-stack)
+- [Run locally](#run-locally)
+- [Run the complete stack with Docker](#run-the-complete-stack-with-docker)
+- [Test the backend](#test-the-backend)
+- [Explore the application](#explore-the-application)
+- [Create the project PPT](#create-the-project-ppt)
+- [Repository structure](#repository-structure)
+- [Current status and limitations](#current-status-and-limitations)
+- [Production-readiness checklist](#production-readiness-checklist)
+
+## What the project does
+
+The portal provides separate institution and officer experiences around a
+shared security-deposit workflow:
+
+1. An institution submits an FDR/RTGS instrument, payment claim, and supporting
+   documents.
+2. The system imports or reads bank-statement data and attempts to match a
+   claim using UTR, amount, date, and narration signals.
+3. Document processing extracts fields, checks dates and file properties, and
+   reports discrepancies for review.
+4. An authorised officer reviews the evidence and makes the workflow decision.
+5. Approved release/refund requests, deductions, notifications, reports, and
+   audit events are recorded by the backend.
+
+The system deliberately separates automated signals from human decisions:
+matching and document checks can flag or route work, but they do not prove
+fraud or replace authorised officer approval.
+
+## Technology stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React 18, React Router, Vite, JavaScript/JSX, plain CSS, GSAP |
+| Backend | Python 3.10+, FastAPI, Uvicorn, Pydantic |
+| Persistence | SQLAlchemy 2, SQLite for local development, PostgreSQL 16 for Docker |
+| Security | JWT access tokens, bcrypt password verification, role/region scoping |
+| Processing | PyPDF2, pandas, openpyxl, ZIP/XML inspection, SHA-256 file hashes |
+| Matching | RapidFuzz plus exact UTR, amount, and date-window checks |
+| Testing | pytest and FastAPI `TestClient` |
 
 ## Run locally
 
-Requirements: Node.js and npm versions supported by the installed Vite release.
+### Prerequisites
 
-```sh
+- Node.js and npm compatible with the installed Vite version
+- Python 3.10 or newer
+- PowerShell on Windows, or an equivalent shell on another platform
+
+### 1. Start the backend
+
+From the repository root:
+
+```powershell
+pip install -r backend/requirements.txt
+$env:PYTHONPATH="backend;."
+python backend/run.py
+```
+
+The API is available at:
+
+- API base URL: <http://127.0.0.1:8000>
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- ReDoc: <http://127.0.0.1:8000/redoc>
+- Health check: <http://127.0.0.1:8000/health>
+
+The default local configuration uses SQLite. Set `DATABASE_URL` when using a
+different database.
+
+### 2. Start the frontend
+
+In a second terminal:
+
+```powershell
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Vite's development server is for local development and is not a production hosting service.
+Open the Vite URL, normally <http://localhost:5173>.
 
-### Commands
+Available npm commands:
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the Vite development server. |
-| `npm run build` | Create the production frontend bundle in `dist/`. |
-| `npm run preview` | Serve the production bundle locally for a preview. |
+| `npm run dev` | Start the Vite development server |
+| `npm run build` | Create the production frontend bundle in `dist/` |
+| `npm run preview` | Preview the production bundle locally |
 
-There is currently no configured automated test, lint, or type-check command in `package.json`.
+### Environment variables
 
-## Current frontend
+The frontend uses the deployed API by default. To use a different backend,
+set `VITE_API_URL` to the backend origin without a trailing `/api`, then
+restart the Vite server or rebuild the frontend:
 
-### Sign-in and registration screens
+```powershell
+$env:VITE_API_URL="http://127.0.0.1:8000"
+npm run dev
+```
 
-- The sign-in screen has separate institution and AICTE officer selections.
-- Sign-in is deliberately disabled because no authorized identity provider or authentication API is configured.
-- New institutions can view the registration-request form, but the form cannot submit a real request without a backend.
-- **Already registered?** links to the institution frontend preview. The officer selection links to the officer command-centre preview.
+For a local backend, set at least a strong `SECRET_KEY` before starting the
+API. For Docker Compose, copy `.env.example` to `.env` and replace both
+placeholder values:
 
-### Institution portal preview
+```powershell
+Copy-Item .env.example .env
+```
 
-Open `/#/institution-preview` in the running application, or use **View institution portal** from the institution sign-in screen.
+Never commit `.env`, passwords, signing keys, API keys, or real uploaded
+documents.
 
-The preview includes these frontend sections:
+## Run the complete stack with Docker
 
-- Dashboard summary and recent local transactions.
-- Transaction entry and manually selected local status labels.
-- FDR/deposit entry, amount summary, and maturity-date counts.
-- Document file selection and a list of selected file names.
-- Release/refund request drafts.
-- Verification-status information.
-- Basic text search over local entries; this is not an AI assistant.
-- CSV report export and a local display-name setting.
+Docker Compose starts PostgreSQL, the FastAPI API, the React frontend, and
+Mailpit:
 
-Entries are stored in the current browser's `localStorage`. Selecting a document does not upload it; the preview stores only the selected file name in its list. Requests are drafts only. A “matched” label is a user-selected note, not bank reconciliation or official verification.
+```powershell
+Copy-Item .env.example .env
+# Edit .env and set unique values for POSTGRES_PASSWORD and SECRET_KEY.
+docker compose up -d --build
+```
 
-### Officer command-centre preview
+Services:
 
-Open `/#/officer-preview` in the running application, or use the link on the officer sign-in screen.
+| Service | Address |
+| --- | --- |
+| Frontend | <http://localhost:5173> |
+| API / Swagger UI | <http://localhost:8000/docs> |
+| PostgreSQL | `localhost:5432` |
+| Mailpit web UI | <http://localhost:8025> |
 
-The preview allows users to add, edit, search, filter, export, and remove manually entered local records and update their local status labels. Summary cards are calculated from those entries. This is a local workspace and does not provide officer access, notifications, shared records, or official actions.
+Stop the stack with:
 
-### Other portal routes
+```powershell
+docker compose down
+```
 
-The protected portal shell includes dashboard, verification, documents, assistant, calculator, and audit pages. Access is guarded by a client-side session state. Since the current sign-in implementation does not establish a real session, these routes require an authorized authentication integration before they can be used as a real portal.
+Add `-v` only when you intentionally want to remove the PostgreSQL volume and
+all local database data.
 
-## What is not implemented
+## Test the backend
 
-The frontend must not be treated as a production financial or identity system. The following are not connected:
+Run the backend unit and endpoint tests from the repository root:
 
-- AICTE institution or officer identity verification, sign-in, password recovery, multi-factor authentication, or session management.
-- Institution registration submission, officer notifications, or workflow approvals.
-- A shared backend database, API, server-side authorization, or persistent audit log.
-- Secure document upload, malware scanning, document storage, or official document review.
-- Bank statement/FDR integrations, transaction matching, payment verification, or release processing.
-- Authorized AI-backed natural-language search or an AI document-verification service.
-- Official deposit/penalty rules, calculation approval, regional policy configuration, or scheduled reminders.
-- Production monitoring, backups, incident response, retention controls, and operational support.
+```powershell
+$env:PYTHONPATH="backend;."
+python -m pytest backend/tests -v
+```
 
-Local preview data is not a substitute for any of these services. The browser's local storage is not encrypted application storage, not shared with other users, and can be cleared or changed by the user.
+The frontend currently has no configured automated test, lint, or type-check
+script in `package.json`. At minimum, validate frontend changes with:
 
-## Work required for a full-fledged application
+```powershell
+npm run build
+```
 
-Complete the items below with the AICTE system owners, security team, and relevant banking and identity-service owners. Agree on requirements and obtain authorization before implementing production integrations.
+## Explore the application
 
-### 1. Confirm scope, policy, and ownership
+The main frontend flows are available from the home and sign-in screens. The
+following routes are useful when collecting presentation screenshots:
 
-- Identify the institution and officer user journeys, allowed roles, regions, approval levels, and escalation paths.
-- Obtain authoritative deposit, interest/penalty, grace-period, maturity, release, document, and verification rules, including effective dates and policy versioning.
-- Define which records are authoritative, who may create or change them, and how records are reconciled with existing AICTE systems.
-- Define data classification, privacy notices, purpose limitation, retention/deletion schedules, legal basis, and incident response ownership.
-- Confirm accessibility, supported browsers/devices, expected scale, availability objectives, and disaster-recovery targets.
+| Route | Demonstrates |
+| --- | --- |
+| `/#/institution-preview` | Institution dashboard and local submission preview |
+| `/#/officer-preview` | Officer command-centre preview |
+| `/#/dashboard` | Portal dashboard |
+| `/#/verify` | Transaction verification |
+| `/#/documents` | Document management |
+| `/#/assistant` | Natural-language assistant interface |
+| `/#/calculator` | Deposit and penalty calculations |
+| `/#/maturity-tracker` | Maturity tracking |
+| `/#/release-requests` | Release/refund workflow |
+| `/#/audit` | Audit view |
 
-### 2. Build an authorized backend and API
+The preview pages use browser `localStorage` for local demo entries. Selecting
+a file stores its name in the preview list; it does not upload the file.
 
-- Select an AICTE-approved hosting environment, backend framework, database, object-storage service, and API contract.
-- Design and document versioned APIs for authentication/session lifecycle, institution onboarding, users/roles, institutions, FDRs/deposits, transactions, documents, release/refund requests, notifications, search, calculations, and audit events.
-- Validate every request on the server; use database constraints and transactions for financial/workflow state changes.
-- Implement server-side role- and institution-scoped authorization. Do not rely on hidden UI elements or client-side route guards as access control.
-- Use migrations, backups, restore testing, idempotency for retried financial/workflow requests, pagination, rate limits, and consistent error responses.
-- Keep secrets and credentials in an approved secret manager. Never bundle backend secrets or privileged API keys into the Vite frontend.
+### Demo accounts
 
-### 3. Integrate real identity and access control
+The backend seeds demo accounts for institution users, scrutiny officers,
+finance, audit, committee, bureau-head, and administrator roles. The backend
+documentation lists the usernames and the demo password. Use these accounts
+only in a disposable local environment and change the password strategy before
+any deployment.
 
-- Connect the approved AICTE identity provider/SSO, or another explicitly authorized identity service.
-- Verify institution and officer identities and account status; implement secure password/MFA flows only if permitted by the identity owner.
-- Enforce least privilege, role/region/institution scoping, session expiry, sign-out/revocation, and secure account recovery.
-- Protect APIs and documents with server-side authorization on every request and record privileged actions in an immutable or tamper-evident audit service.
-- Threat-model account takeover, privilege escalation, insecure direct object references, CSRF, XSS, replay, and session fixation.
+## Create the project PPT
 
-### 4. Connect data, documents, and external services
+### Recommended workflow
 
-- Replace preview `localStorage` reads/writes with authenticated API calls and real database persistence.
-- Integrate approved bank/FDR data sources using documented agreements, authentication, reconciliation rules, and exception handling.
-- Upload document contents to private, access-controlled storage using short-lived upload/download authorization; add file-size/type validation, malware scanning, encryption, retention, and deletion workflows.
-- Build notification delivery and in-portal inbox state with retries, deduplication, delivery status, and authorized recipient rules.
-- Configure any AI/search or document-analysis provider through an approved service boundary. Apply access filtering before retrieval, redact/minimize sensitive inputs, protect against prompt injection, log safely, and require human review for consequential decisions.
-- Never let an AI system make or finalize financial, eligibility, or approval decisions without the policy owner’s explicit authorization and review process.
+1. **Read the source of truth.** Start with
+   [docs/SLIDE_FACTS.md](docs/SLIDE_FACTS.md). It distinguishes
+   `IMPLEMENTED`, `PARTIAL`, `FRONTEND-ONLY`, `PLANNED`, and `NOT FOUND`.
+2. **Run the demo.** Start the frontend and backend, then open the routes above.
+3. **Capture evidence.** Use screenshots of the dashboard, verification,
+   document, assistant, release, audit, and officer views. Prefer one clear
+   screenshot per idea.
+4. **Build a six-slide story.** Keep each slide focused on one message:
 
-### 5. Implement workflow and financial correctness
+   | Slide | Message | Evidence to show |
+   | --- | --- | --- |
+   | 1. Title | AICTE Security Deposit / FDR Management Portal | Product name and one-line purpose |
+   | 2. Proposed solution | A traceable workflow from submission to officer decision | Institution and officer screens; workflow arrows |
+   | 3. Technical approach | React frontend, FastAPI services, database, matching, document checks, and audit trail | Architecture diagram or stack diagram |
+   | 4. Feasibility and viability | Working backend paths and testable local deployment | Swagger UI, test output, Docker services |
+   | 5. Impact and benefits | Better visibility, structured review, evidence traceability, and fewer manual handoffs | Dashboard, verification, release, and audit screens |
+   | 6. Research and next steps | What is implemented, what is partial, and what is required for production | Status table and roadmap |
+5. **Label the maturity honestly.** Say “prototype”, “demo”, “partial”, or
+   “frontend-only” wherever applicable. Do not present local seed data as live
+   institutional data.
+6. **Keep the conclusion actionable.** End with the next steps: approve
+   policy and ownership, integrate identity and data sources, complete security
+   controls, and validate the production deployment.
 
-- Translate only approved, versioned rules into server-side calculations and test them against policy-owner-approved examples and boundary cases.
-- Define state machines and transition permissions for registration, transaction verification, document review, maturity, release/refund, and appeals/corrections.
-- Support maker-checker or dual approval where required; prevent duplicate submissions and preserve prior values and decision reasons.
-- Reconcile amounts and statuses with authoritative sources; provide clear exception, correction, reversal, and escalation workflows.
-- Make every date/time, currency, rounding rule, policy version, and calculation explanation explicit and auditable.
+### Presentation rules
 
-### 6. Production hardening and launch
+- Use the exact project name and capabilities documented in
+  [docs/SLIDE_FACTS.md](docs/SLIDE_FACTS.md).
+- Do not claim official AICTE deployment, live bank integration, real OCR,
+  production authentication, or complete multilingual support.
+- Do not put unsupported accuracy percentages, speed claims, user counts, or
+  financial impact figures on slides.
+- Explain that automated matching and document analysis produce evidence and
+  flags; an authorised officer makes consequential decisions.
+- Keep detailed implementation notes in speaker notes rather than filling
+  slides with endpoint lists.
+- Use screenshots from the local demo only, with synthetic data and no secrets.
 
-- Add automated unit, integration, API-contract, authorization, accessibility, and end-to-end tests, including negative permission tests and workflow boundary cases.
-- Add linting, dependency/security scanning, secret scanning, build checks, and database migration checks to CI.
-- Validate keyboard navigation, screen-reader labels, contrast, responsive layouts, localization, and error/loading/empty states.
-- Configure HTTPS, secure headers, content security policy, CSRF protection where applicable, CORS allowlists, input/output encoding, rate limiting, and vulnerability management.
-- Set up structured redacted logs, metrics, traces, alerting, uptime monitoring, audit review, backups, restore drills, disaster recovery, and incident runbooks.
-- Complete privacy, security, legal, accessibility, and operational reviews; run a penetration test through the authorized process; obtain production go-live approval.
-- Deploy to an AICTE-approved environment with separate development/staging/production configuration, controlled releases, rollback procedures, and support ownership.
+## Repository structure
 
-## Suggested delivery order
+```text
+.
+├── backend/
+│   ├── app/
+│   │   ├── routers/       # FastAPI API routes
+│   │   ├── services/      # Matching, rules, documents, reports, audit
+│   │   └── ...
+│   ├── tests/             # Backend unit and endpoint tests
+│   └── requirements.txt
+├── docs/
+│   └── SLIDE_FACTS.md     # Evidence-based presentation content
+├── public/                # Logos and banner assets
+├── src/
+│   ├── components/        # Shared UI and portal shells
+│   ├── pages/             # Portal, preview, workflow, and report screens
+│   ├── data/              # API wrappers and local preview data
+│   └── styles/            # Plain CSS
+├── docker-compose.yml
+├── .env.example
+└── package.json
+```
 
-1. Approve scope, data classification, policy rules, identity provider, and integration owners.
-2. Write API contracts and threat model; agree on the database and document-storage architecture.
-3. Implement backend authentication, server-side authorization, core data model, and audit foundations.
-4. Replace preview-only state with API-backed institution and officer workflows.
-5. Integrate document storage, notifications, bank/FDR services, and approved search/verification services.
-6. Add automated verification, security/privacy/accessibility reviews, operational monitoring, and production deployment.
+## Current status and limitations
 
-Do not use real institutional or financial data in the previews. Production use should begin only after the authorized services and controls above are implemented and approved.
+The backend contains real API, persistence, workflow, matching, document,
+notification, report, and audit paths for local demonstration. The frontend
+contains both API-backed portal screens and local preview screens. The
+repository is not a production-ready public service.
+
+Before describing the project as production-ready, it still needs:
+
+- An approved identity provider, MFA, session lifecycle, and account recovery.
+- Server-side authorization review, threat modelling, security testing, and
+  secret management.
+- Authoritative AICTE policy rules, versioning, approvals, and boundary-case
+  validation.
+- Approved bank/FDR integrations and reconciliation procedures.
+- Private document storage, malware scanning, retention, encryption, and
+  access-controlled downloads.
+- Production monitoring, backups, restore drills, incident response, and
+  disaster recovery.
+- Accessibility, contract, integration, and end-to-end test coverage.
+
+See the detailed evidence and status assessment in
+[docs/SLIDE_FACTS.md](docs/SLIDE_FACTS.md) and the backend-specific notes in
+[backend/README.md](backend/README.md).
+
+## Production-readiness checklist
+
+Use this checklist before any real deployment:
+
+- [ ] Scope, data classification, policy ownership, and retention are approved.
+- [ ] Identity, roles, institution/region boundaries, and least privilege are
+      verified server-side.
+- [ ] Database migrations, backups, restore tests, and rollback procedures are
+      in place.
+- [ ] Bank, notification, document, and storage integrations are authorized.
+- [ ] Financial calculations and workflow transitions are tested against
+      approved policy examples.
+- [ ] Security, privacy, accessibility, penetration, and dependency reviews
+      are complete.
+- [ ] Logs, metrics, alerts, audit review, and incident runbooks are ready.
+- [ ] Development, staging, and production environments are separated.
+- [ ] Go-live approval and operational ownership are documented.
